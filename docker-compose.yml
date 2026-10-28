@@ -1,0 +1,30 @@
+# Full local stack: Postgres + Redis + API + worker + frontend dev server.
+# Real providers need TINYFISH_API_KEY / LLM_API_KEY in backend/.env; without them set
+# WEB_RESEARCH_PROVIDER=fixture LLM_PROVIDER=fixture for the labelled demo.
+services:
+  db:
+    image: postgres:16
+    environment: { POSTGRES_USER: clauselens, POSTGRES_PASSWORD: clauselens, POSTGRES_DB: clauselens }
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "clauselens"], interval: 3s, retries: 20 }
+    volumes: [pgdata:/var/lib/postgresql/data]
+  redis:
+    image: redis:7
+  api:
+    build: ./backend
+    env_file: [./backend/.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://clauselens:clauselens@db:5432/clauselens
+      REDIS_URL: redis://redis:6379/0
+    command: sh -c "alembic upgrade head && uvicorn clauselens.main:app --host 0.0.0.0 --port 8000"
+    ports: ["8000:8000"]
+    depends_on: { db: { condition: service_healthy }, redis: { condition: service_started } }
+  worker:
+    build: ./backend
+    env_file: [./backend/.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://clauselens:clauselens@db:5432/clauselens
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A clauselens.worker worker --loglevel INFO --concurrency 2 -Q investigations
+    depends_on: [api]
+volumes:
+  pgdata:

@@ -1,0 +1,58 @@
+# Render Blueprint for the ClauseLens backend (API + worker + Postgres + Key Value).
+# Secrets use `sync: false`: Render prompts for them on first Blueprint creation.
+services:
+  - type: web
+    name: clauselens-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    # Migrations run as a controlled step before each deploy (requires a paid instance type).
+    preDeployCommand: alembic upgrade head
+    envVars: &shared_env
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clauselens-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: clauselens-redis
+          property: connectionString
+      - key: WEB_RESEARCH_PROVIDER
+        value: tinyfish
+      - key: TINYFISH_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: ollama
+      - key: LLM_BASE_URL
+        value: https://ollama.com
+      - key: LLM_MODEL
+        value: gpt-oss:120b
+      - key: LLM_API_KEY
+        sync: false
+      - key: JOB_QUEUE_PROVIDER
+        value: celery
+      - key: CORS_ORIGINS
+        sync: false # e.g. https://clauselens.vercel.app
+
+  - type: worker
+    name: clauselens-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A clauselens.worker worker --loglevel INFO --concurrency 2 -Q investigations
+    maxShutdownDelaySeconds: 120
+    envVars: *shared_env
+
+  - type: keyvalue
+    name: clauselens-redis
+    ipAllowList: [] # private network only
+    maxmemoryPolicy: noeviction # queued jobs must never be evicted
+
+databases:
+  - name: clauselens-db
+    databaseName: clauselens
+    ipAllowList: [] # private network only

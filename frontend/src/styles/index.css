@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-paper text-ink font-body antialiased;
+  }
+  body {
+    @apply min-h-screen bg-paper;
+    overflow-x: clip;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display font-extrabold tracking-tight;
+    font-stretch: 87.5%;
+  }
+  :focus-visible {
+    outline: 3px solid #5b5bd6;
+    outline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Panels: thick black outline + hard offset shadow, as on every deck slide. */
+  .panel {
+    @apply border-4 border-ink bg-white shadow-brut rounded-brut;
+  }
+  .panel-sm {
+    @apply border-3 border-ink bg-white shadow-brut-sm rounded-brut;
+  }
+  .label-tag {
+    @apply inline-flex items-center gap-2 border-3 border-ink px-3 py-1 font-display text-sm font-extrabold uppercase tracking-wide shadow-brut-sm;
+    font-stretch: 87.5%;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 border-3 border-ink px-5 py-2.5 font-display font-extrabold uppercase tracking-wide shadow-brut-sm transition-transform rounded-brut;
+    font-stretch: 87.5%;
+  }
+  .btn:hover:not(:disabled) {
+    @apply -translate-x-0.5 -translate-y-0.5 shadow-brut;
+  }
+  .btn:active:not(:disabled) {
+    @apply translate-x-0.5 translate-y-0.5 shadow-none;
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-ink text-sun;
+  }
+  .btn-yellow {
+    @apply btn bg-sun text-ink;
+  }
+  .btn-white {
+    @apply btn bg-white text-ink;
+  }
+  .field {
+    @apply w-full border-3 border-ink bg-white px-4 py-3 text-base font-semibold placeholder:font-medium placeholder:text-slate rounded-brut;
+  }
+  .field:focus {
+    @apply shadow-brut-sm outline-none;
+  }
+  .section-number {
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center border-3 border-ink bg-sun font-display text-xl font-extrabold shadow-brut-sm;
+  }
+}

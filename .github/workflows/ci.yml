@@ -1,0 +1,47 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: clauselens, POSTGRES_PASSWORD: clauselens, POSTGRES_DB: clauselens_test }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv -p 3.12 .venv && uv pip install -e ".[dev]"
+      - run: .venv/bin/ruff check clauselens tests
+      - run: .venv/bin/mypy clauselens
+      - run: .venv/bin/pytest -q
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://clauselens:clauselens@localhost:5432/clauselens_test
+          TEST_REDIS_URL: redis://localhost:6379/15
+      - name: Migrations apply cleanly and match models
+        env: { DATABASE_URL: "postgresql+psycopg://clauselens:clauselens@localhost:5432/clauselens_test" }
+        run: |
+          .venv/bin/alembic downgrade base
+          .venv/bin/alembic upgrade head
+          .venv/bin/alembic check
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - uses: astral-sh/setup-uv@v5
+      - run: cd backend && uv venv -p 3.12 .venv && uv pip install -e .
+      - run: cd frontend && npm ci
+      - run: cd frontend && npm run typecheck && npm test && npm run build
+      - run: cd frontend && npx playwright install --with-deps chromium && npm run e2e
