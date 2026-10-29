@@ -3,9 +3,9 @@ import type { InvestigationEvent } from "../api/types";
 import type { Connection } from "../hooks/useInvestigationEvents";
 
 const LEVEL = {
-  info: { Icon: Info, cls: "bg-white" },
-  warning: { Icon: AlertTriangle, cls: "bg-tangerine-soft" },
-  error: { Icon: XCircle, cls: "bg-bubblegum-soft" },
+  info: { Icon: Info, dot: "bg-lagoon", row: "" },
+  warning: { Icon: AlertTriangle, dot: "bg-tangerine", row: "bg-tangerine-soft/70" },
+  error: { Icon: XCircle, dot: "bg-bubblegum", row: "bg-bubblegum-soft/80" },
 } as const;
 
 const CONNECTION_LABEL: Record<Connection, string> = {
@@ -17,26 +17,36 @@ const CONNECTION_LABEL: Record<Connection, string> = {
 
 export function EventLog({ events, connection }: { events: InvestigationEvent[]; connection: Connection }) {
   return (
-    <section className="panel overflow-hidden" aria-labelledby="log-heading">
-      <div className="flex items-center justify-between border-b-4 border-ink bg-ink px-4 py-2 text-sun">
-        <h3 id="log-heading" className="text-lg uppercase">Activity log</h3>
-        <span className="text-xs font-extrabold uppercase">{CONNECTION_LABEL[connection]}</span>
+    <section className="card overflow-hidden" aria-labelledby="log-heading">
+      <div className="flex items-center justify-between bg-ink px-5 py-3.5 text-white">
+        <h3 id="log-heading" className="text-lg">Activity log</h3>
+        <span className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-bold">
+          <span className="relative flex h-2 w-2">
+            {connection === "live" ? <span className="absolute inset-0 animate-ring rounded-full bg-lagoon" /> : null}
+            <span className={`relative h-2 w-2 rounded-full ${connection === "closed" ? "bg-white/50" : "bg-lagoon"}`} />
+          </span>
+          <span>{CONNECTION_LABEL[connection]}</span>
+        </span>
       </div>
       {events.length === 0 ? (
-        <p className="p-4 font-semibold">Waiting for the first update…</p>
+        <p className="p-5 text-slate">Waiting for the first update…</p>
       ) : (
-        <ol className="max-h-[28rem] divide-y-2 divide-ink/15 overflow-y-auto" aria-live="polite">
+        <ol className="relative max-h-[30rem] overflow-y-auto px-3 py-3" aria-live="polite">
           {events.map((e) => {
-            const { Icon, cls } = LEVEL[e.level] ?? LEVEL.info;
+            const { Icon, dot, row } = LEVEL[e.level] ?? LEVEL.info;
             return (
-              <li key={e.seq} className={`flex gap-3 px-4 py-2.5 text-sm ${cls}`}>
-                <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-label={e.level} />
+              <li key={e.seq} className={`relative flex animate-slide-up gap-3 rounded-2xl px-3 py-2.5 text-sm ${row}`}>
+                <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${dot} text-ink`}>
+                  <Icon className="h-3.5 w-3.5" aria-label={e.level} />
+                </span>
                 <div className="min-w-0">
-                  <p className="font-semibold">
-                    {e.vendor_name ? <span className="mr-2 border-2 border-ink bg-sun px-1 text-xs font-extrabold uppercase">{e.vendor_name}</span> : null}
+                  <p className="font-medium">
+                    {e.vendor_name ? (
+                      <span className="mr-2 rounded-full bg-sun px-2 py-0.5 text-[11px] font-bold">{e.vendor_name}</span>
+                    ) : null}
                     <span className="break-words">{e.message}</span>
                   </p>
-                  <p className="text-xs text-slate">
+                  <p className="mt-0.5 text-xs text-slate">
                     {new Date(e.created_at).toLocaleTimeString()} · {e.stage}
                   </p>
                 </div>

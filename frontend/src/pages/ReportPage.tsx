@@ -8,7 +8,8 @@ import { EvidenceDialog } from "../components/EvidenceDialog";
 import { FALLBACK_LABELS } from "../components/fieldGroups";
 import { PrioritySelector, toPriorities } from "../components/PrioritySelector";
 import { ExplanationPanel, RecommendationPanel, RiskFlags } from "../components/RecommendationPanel";
-import { ErrorState, LoadingState, SectionHeader } from "../components/ui";
+import { Reveal } from "../components/motion";
+import { ErrorState, LoadingState } from "../components/ui";
 import { useMeta } from "../hooks/useMeta";
 
 export function ReportPage() {
@@ -43,63 +44,87 @@ export function ReportPage() {
   const data = report.data;
 
   return (
-    <div className="space-y-8">
-      <SectionHeader
-        number="04"
-        title="Side-by-side comparison"
-        subtitle={`${data.vendors.map((v) => v.name).join(" · ")} · generated ${new Date(data.created_at).toLocaleString()}`}
-        aside={
+    <div className="space-y-6">
+      <Reveal>
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <span className="eyebrow">
+              Report · {data.vendors.length} vendors · generated {new Date(data.created_at).toLocaleString()}
+            </span>
+            <h1 className="mt-3 text-4xl leading-tight sm:text-5xl">
+              Side-by-side <span className="text-gradient">comparison</span>
+            </h1>
+          </div>
           <div className="flex flex-wrap gap-2">
-            {data.is_demo ? <span className="label-tag bg-iris text-white">Demo data</span> : null}
+            {data.is_demo ? <span className="label-tag bg-iris text-white shadow-glow-iris">Demo data</span> : null}
             {data.investigation_id ? (
-              <Link to={`/investigations/${data.investigation_id}`} className="btn-white text-sm">
+              <Link to={`/investigations/${data.investigation_id}`} className="btn-white px-4 py-2 text-sm">
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Investigation
               </Link>
             ) : null}
           </div>
-        }
-      />
+        </header>
+      </Reveal>
 
-      <RecommendationPanel report={data} />
-      <ComparisonMatrix report={data} labels={labels} onEvidence={setTarget} />
+      <Reveal delay={80}>
+        <RecommendationPanel report={data} />
+      </Reveal>
+      <Reveal delay={140}>
+        <ComparisonMatrix report={data} labels={labels} onEvidence={setTarget} />
+      </Reveal>
       <div className="grid gap-6 lg:grid-cols-2">
-        <RiskFlags report={data} />
-        <ExplanationPanel report={data} />
+        <Reveal>
+          <RiskFlags report={data} />
+        </Reveal>
+        <Reveal delay={100}>
+          <ExplanationPanel report={data} />
+        </Reveal>
       </div>
 
-      <details className="panel-sm bg-white p-4">
-        <summary className="cursor-pointer font-display text-lg font-extrabold uppercase">How the scoring works</summary>
-        <ul className="mt-3 space-y-2 text-sm font-semibold">
-          {data.criteria.map((c) => (
-            <li key={c.criterion}>{c.explanation}</li>
-          ))}
-        </ul>
-        <p className="mt-3 text-sm">
-          Scores come from deterministic rules applied to verified values only. The language model extracts quotes and
-          writes the plain-English summary; it never sets scores or picks the winner.
-        </p>
-      </details>
-
-      <section className="panel bg-white p-5" aria-labelledby="reprioritise-heading">
-        <h3 id="reprioritise-heading" className="mb-3 text-lg uppercase">Change your priorities</h3>
-        <p className="mb-4 text-sm font-semibold">Re-scores the same verified evidence instantly. No websites are re-read.</p>
-        <PrioritySelector criteria={meta.data?.criteria ?? []} selected={priorities} onChange={setPriorities} />
-        <button
-          type="button"
-          className="btn-primary mt-4"
-          disabled={!priorities.length || recompare.isPending}
-          onClick={() => recompare.mutate()}
-        >
-          <RefreshCw className="h-4 w-4" aria-hidden="true" /> {recompare.isPending ? "Re-scoring…" : "Re-score"}
-        </button>
-        {recompare.isError ? (
-          <p role="alert" className="mt-3 font-bold">
-            {recompare.error instanceof ApiError ? recompare.error.message : "Could not re-score."}
+      <Reveal>
+        <details className="card group p-6">
+          <summary className="flex cursor-pointer list-none items-center justify-between font-display text-lg font-extrabold">
+            How the scoring works
+            <span className="rounded-full bg-paper px-3 py-1 text-xs font-bold transition group-open:bg-sun">Details</span>
+          </summary>
+          <ul className="mt-4 space-y-2 text-sm">
+            {data.criteria.map((c) => (
+              <li key={c.criterion} className="rounded-2xl bg-paper px-4 py-2.5">{c.explanation}</li>
+            ))}
+          </ul>
+          <p className="mt-4 text-sm text-slate">
+            Scores come from deterministic rules applied to verified values only. The language model extracts quotes and
+            writes the plain-English summary; it never sets scores or picks the winner.
           </p>
-        ) : null}
-      </section>
+        </details>
+      </Reveal>
 
-      <p className="border-l-8 border-ink bg-white px-4 py-3 text-sm font-semibold">{data.disclaimer}</p>
+      <Reveal>
+        <section className="card relative overflow-hidden p-6 sm:p-8" aria-labelledby="reprioritise-heading">
+          <span aria-hidden="true" className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-lagoon/25 blur-3xl" />
+          <h3 id="reprioritise-heading" className="relative text-2xl">Change your priorities</h3>
+          <p className="relative mb-5 mt-1 text-sm text-slate">Re-scores the same verified evidence instantly. No websites are re-read.</p>
+          <div className="relative">
+            <PrioritySelector criteria={meta.data?.criteria ?? []} selected={priorities} onChange={setPriorities} />
+          </div>
+          <button
+            type="button"
+            className="btn-iris relative mt-5"
+            disabled={!priorities.length || recompare.isPending}
+            onClick={() => recompare.mutate()}
+          >
+            <RefreshCw className={`h-4 w-4 ${recompare.isPending ? "animate-spin" : ""}`} aria-hidden="true" />{" "}
+            {recompare.isPending ? "Re-scoring…" : "Re-score"}
+          </button>
+          {recompare.isError ? (
+            <p role="alert" className="relative mt-3 font-semibold">
+              {recompare.error instanceof ApiError ? recompare.error.message : "Could not re-score."}
+            </p>
+          ) : null}
+        </section>
+      </Reveal>
+
+      <p className="rounded-3xl bg-white/70 px-5 py-3 text-sm text-slate shadow-inset">{data.disclaimer}</p>
 
       {target ? (
         <EvidenceDialog
