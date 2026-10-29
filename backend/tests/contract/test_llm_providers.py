@@ -12,6 +12,7 @@ import respx
 from clauselens.adapters.llm.fixture import FixtureLLMProvider
 from clauselens.adapters.llm.ollama import OllamaLLMProvider
 from clauselens.adapters.llm.openai_compatible import OpenAICompatibleLLMProvider
+from clauselens.adapters.llm.openrouter import OpenRouterLLMProvider
 from clauselens.domain.errors import ConfigurationError, ErrorCategory, LLMError
 from clauselens.ports.llm import LLMMessage, LLMProvider, LLMRequest, LLMResponse
 from clauselens.services.extraction import extract_policy
@@ -19,6 +20,7 @@ from tests.conftest import make_settings, source
 
 OLLAMA_URL = "https://ollama.com/api/chat"
 OPENAI_URL = "https://ollama.com/v1/chat/completions"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CLAIMS = json.dumps({"claims": [{"field": "refund_window", "source_id": "S1",
                                  "quote": "refund within 14 days of purchase",
                                  "value": {"duration": {"value": 14, "unit": "day"}}}]})
@@ -32,6 +34,13 @@ def ollama(**kw: object) -> OllamaLLMProvider:
 def openai_compat(**kw: object) -> OpenAICompatibleLLMProvider:
     return OpenAICompatibleLLMProvider(make_settings(llm_provider="openai_compatible", llm_base_url="https://ollama.com/v1",
                                                      llm_api_key="ol-key", llm_max_retries=1, **kw), client=httpx.Client())
+
+
+def openrouter(**kw: object) -> OpenRouterLLMProvider:
+    base: dict[str, object] = {"llm_provider": "openrouter", "openrouter_api_key": "or-key",
+                               "openrouter_model": "google/gemini-2.5-flash", "llm_max_retries": 1}
+    base.update(kw)
+    return OpenRouterLLMProvider(make_settings(**base), client=httpx.Client(), sleep=lambda s: None)
 
 
 def ollama_ok(text: str) -> httpx.Response:
@@ -49,6 +58,7 @@ def openai_ok(text: str) -> httpx.Response:
 CASES: dict[str, Callable[[respx.Router, str], LLMProvider]] = {
     "ollama": lambda r, t: (r.post(OLLAMA_URL).mock(return_value=ollama_ok(t)), ollama())[1],
     "openai_compatible": lambda r, t: (r.post(OPENAI_URL).mock(return_value=openai_ok(t)), openai_compat())[1],
+    "openrouter": lambda r, t: (r.post(OPENROUTER_URL).mock(return_value=openai_ok(t)), openrouter())[1],
 }
 
 REQ = LLMRequest(messages=[LLMMessage(role="system", content="s"), LLMMessage(role="user", content="u")],
@@ -86,7 +96,7 @@ def test_llm_contract_errors_translate(case: str, status: int, category: ErrorCa
     with respx.mock() as router:
         provider = CASES[case](router, "")
         router.routes.clear()
-        route = router.post(url__regex=r"https://ollama\.com/.*").mock(
+        route = router.post(url__regex=r"https://(ollama\.com|openrouter\.ai)/.*").mock(
             return_value=httpx.Response(status, json={"error": "model 'x' not found"}))
         with pytest.raises(LLMError) as exc:
             provider.generate(REQ)
@@ -151,3 +161,103 @@ def test_fixture_llm_is_labelled_demo() -> None:
     assert FixtureLLMProvider().is_demo
     with pytest.raises(LLMError):
         FixtureLLMProvider().generate(LLMRequest(messages=[LLMMessage(role="user", content="unknown.example")]))
+
+
+
+# ------------------------------------------------------------- OpenRouter specifics
+@respx.mock
+def test_openrouter_request_matches_documented_api() -> None:
+    route = respx.post(OPENROUTER_URL).mock(return_value=openai_ok(CLAIMS))
+    resp = openrouter(openrouter_app_url="https://clauselens.example").generate(REQ)
+    req = route.calls[0].request
+    body = json.loads(req.content)
+    assert req.headers["Authorization"] == "Bearer or-key"
+    assert req.headers["HTTP-Referer"] == "https://clauselens.example"
+    assert req.headers["X-OpenRouter-Title"] == "ClauseLens"
+    assert body["model"] == "google/gemini-2.5-flash" and body["stream"] is False
+    assert body["response_format"] == {"type": "json_object"}
+    assert body["max_tokens"] == 4096 and body["temperature"] == 0.0
+    assert resp.provider == "openrouter" and resp.prompt_tokens == 100
+
+
+@respx.mock
+def test_openrouter_json_schema_mode_requires_capable_endpoints() -> None:
+    route = respx.post(OPENROUTER_URL).mock(return_value=openai_ok(CLAIMS))
+    openrouter(openrouter_response_format="json_schema").generate(REQ)
+    body = json.loads(route.calls[0].request.content)
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"]["schema"] == {"type": "object"}
+    assert body["provider"] == {"require_parameters": True}
+
+
+@respx.mock
+def test_openrouter_error_inside_200_body_is_retried_then_succeeds() -> None:
+    route = respx.post(OPENROUTER_URL).mock(side_effect=[
+        httpx.Response(200, json={"id": "gen-1", "error": {"code": 502, "message": "Provider returned error"}}),
+        openai_ok(CLAIMS),
+    ])
+    assert openrouter().generate(REQ).text == CLAIMS
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_openrouter_non_transient_200_body_error_fails_fast() -> None:
+    route = respx.post(OPENROUTER_URL).mock(return_value=httpx.Response(
+        200, json={"error": {"code": 403, "message": "Request blocked: moderation"}}))
+    with pytest.raises(LLMError) as exc:
+        openrouter().generate(REQ)
+    assert exc.value.category is ErrorCategory.BLOCKED and route.call_count == 1
+
+
+@respx.mock
+def test_openrouter_choice_level_error_detected() -> None:
+    respx.post(OPENROUTER_URL).mock(return_value=httpx.Response(200, json={"choices": [
+        {"message": {"content": ""}, "finish_reason": "error", "error": {"code": 400, "message": "bad"}}]}))
+    with pytest.raises(LLMError) as exc:
+        openrouter().generate(REQ)
+    assert exc.value.category is ErrorCategory.INVALID_REQUEST
+
+
+@respx.mock
+def test_openrouter_length_finish_with_no_text_is_explained() -> None:
+    respx.post(OPENROUTER_URL).mock(return_value=httpx.Response(200, json={"choices": [
+        {"message": {"content": ""}, "finish_reason": "length"}], "usage": {"prompt_tokens": 9, "completion_tokens": 4000}}))
+    with pytest.raises(LLMError) as exc:
+        openrouter().generate(REQ)
+    assert exc.value.category is ErrorCategory.MALFORMED_OUTPUT and "output budget" in exc.value.message
+
+
+@respx.mock
+def test_openrouter_insufficient_credits_402_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    route = respx.post(OPENROUTER_URL).mock(return_value=httpx.Response(
+        402, json={"error": {"code": 402, "message": "Insufficient credits"}}))
+    with pytest.raises(LLMError) as exc:
+        openrouter().generate(REQ)
+    assert exc.value.category is ErrorCategory.QUOTA and route.call_count == 1
+    assert "or-key" not in exc.value.message
+
+
+@respx.mock
+def test_openrouter_rate_limit_honours_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
+    sleeps: list[float] = []
+    monkeypatch.setattr("time.sleep", sleeps.append)
+    respx.post(OPENROUTER_URL).mock(side_effect=[
+        httpx.Response(429, headers={"Retry-After": "3"}, json={"error": {"code": 429, "message": "Rate limited"}}),
+        openai_ok(CLAIMS),
+    ])
+    assert openrouter().generate(REQ).text == CLAIMS
+    assert sleeps == [3.0]
+
+
+def test_openrouter_configuration_errors() -> None:
+    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY"):
+        OpenRouterLLMProvider(make_settings(openrouter_model="x/y"))
+    with pytest.raises(ConfigurationError, match="OPENROUTER_MODEL"):
+        OpenRouterLLMProvider(make_settings(openrouter_api_key="k"))
+
+
+def test_openrouter_key_never_in_public_config() -> None:
+    s = make_settings(llm_provider="openrouter", openrouter_api_key="sk-or-secret", openrouter_model="google/gemini-2.5-flash")
+    assert "sk-or-secret" not in str(s.public_summary()) and "sk-or-secret" not in repr(s)
+    assert s.public_summary()["llm_model"] == "google/gemini-2.5-flash"

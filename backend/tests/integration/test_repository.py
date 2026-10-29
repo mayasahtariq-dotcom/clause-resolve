@@ -113,3 +113,25 @@ def test_idempotency_key(repo: SqlAlchemyRepository) -> None:
     a, created_a = repo.create_investigation([VendorInput(name="A"), VendorInput(name="B")], [], **kwargs)
     b, created_b = repo.create_investigation([VendorInput(name="A"), VendorInput(name="B")], [], **kwargs)
     assert created_a and not created_b and a.id == b.id
+
+
+def test_risk_analysis_roundtrip(repo: SqlAlchemyRepository) -> None:
+    from clauselens.domain.models import VerificationStatus
+    from clauselens.domain.risk import RiskAnalysisStatus, RiskClause, RiskEvidence, RiskLevel, VendorRiskAnalysis
+
+    inv = create(repo, "Acme", "Beta")
+    vendor = inv.vendors[0].vendor
+    risk = VendorRiskAnalysis(vendor_id=vendor.id, vendor_name=vendor.name, status=RiskAnalysisStatus.COMPLETED,
+                              chunks_analyzed=1, chunks_total=1, provider="openrouter", model="m",
+                              clauses=[RiskClause(clause="Auto renewal", risk_level=RiskLevel.HIGH, explanation="e",
+                                                  reason="r", category="Renewal",
+                                                  evidence=RiskEvidence(quote="renews automatically", source_key="S1",
+                                                                        verification=VerificationStatus.VERIFIED))])
+    findings = aggregate_claims([], [], extraction_meta={}, analysed=True)
+    sid, _ = repo.save_snapshot(inv.id, vendor.id, findings, extraction_meta={}, warnings=[], risk=risk)
+    loaded = repo.load_policy(sid)
+    assert loaded is not None and loaded.risk == risk
+    items, _ = repo.list_snapshots(vendor.id, limit=5, offset=0)
+    assert items[0].risk == risk
+    sid2, _ = repo.save_snapshot(inv.id, inv.vendors[1].vendor.id, findings, extraction_meta={}, warnings=[])
+    assert repo.load_policy(sid2).risk is None  # type: ignore[union-attr]

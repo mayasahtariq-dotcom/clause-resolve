@@ -68,6 +68,22 @@ class Settings(BaseSettings):
     llm_max_input_chars: int = Field(default=60_000, ge=4_000)
     llm_generate_explanation: bool = True
 
+    # --- OpenRouter (LLM_PROVIDER=openrouter) ---
+    # Verified against openrouter.ai/docs (2026-10): POST {base}/chat/completions, Bearer auth.
+    openrouter_api_key: SecretStr | None = None
+    openrouter_model: str | None = None  # e.g. google/gemini-2.5-flash
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_app_url: str | None = None  # optional HTTP-Referer attribution
+    openrouter_app_title: str = "ClauseLens"
+    # json_object works on most models; json_schema only on models that support structured outputs.
+    openrouter_response_format: str = "json_object"
+
+    # --- Risky-clause analysis (runs on the pages TinyFish retrieved) ---
+    risk_analysis_enabled: bool = True
+    risk_chunk_chars: int = Field(default=12_000, ge=2_000, le=100_000)
+    risk_max_chunks_per_vendor: int = Field(default=8, ge=1, le=40)
+    risk_max_clauses_per_vendor: int = Field(default=25, ge=1, le=100)
+
     # --- Background jobs ---
     job_queue_provider: str = "celery"
     redis_url: str = "redis://localhost:6379/0"
@@ -106,6 +122,13 @@ class Settings(BaseSettings):
     def _mode(cls, v: str) -> str:
         if v not in {"prompt", "json", "schema"}:
             raise ValueError("LLM_OUTPUT_MODE must be prompt, json or schema")
+        return v
+
+    @field_validator("openrouter_response_format")
+    @classmethod
+    def _or_format(cls, v: str) -> str:
+        if v not in {"json_object", "json_schema", "none"}:
+            raise ValueError("OPENROUTER_RESPONSE_FORMAT must be json_object, json_schema or none")
         return v
 
     @field_validator("llm_think", mode="before")
@@ -154,7 +177,8 @@ class Settings(BaseSettings):
             "environment": self.environment.value,
             "web_research_provider": self.web_research_provider,
             "llm_provider": self.llm_provider,
-            "llm_model": self.llm_model,
+            "llm_model": self.openrouter_model if self.llm_provider == "openrouter" else self.llm_model,
+            "risk_analysis_enabled": self.risk_analysis_enabled,
             "job_queue_provider": self.job_queue_provider,
             "persistence_provider": self.persistence_provider,
             "storage_provider": self.storage_provider,

@@ -21,6 +21,7 @@ REGISTRY: dict[str, dict[str, str]] = {
     "llm": {
         "ollama": "clauselens.adapters.llm.ollama:create",
         "openai_compatible": "clauselens.adapters.llm.openai_compatible:create",
+        "openrouter": "clauselens.adapters.llm.openrouter:create",
         "fixture": "clauselens.adapters.llm.fixture:create",
     },
     "persistence": {

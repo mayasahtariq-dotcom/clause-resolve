@@ -46,3 +46,22 @@ def test_tinyfish_then_ollama_extraction() -> None:
     llm = OllamaLLMProvider(make_settings(llm_provider="ollama", llm_api_key=_require("LLM_API_KEY")))
     outcome = extract_policy(llm, "Coursera", result.sources, max_input_chars=40_000)
     assert outcome.meta["provider"] == "ollama"
+
+
+def test_openrouter_risk_scan_live() -> None:
+    """RUN_LIVE_TESTS=1 OPENROUTER_API_KEY=... OPENROUTER_MODEL=... pytest tests/test_live_providers.py -k openrouter"""
+    import uuid
+
+    from clauselens.adapters.llm.openrouter import OpenRouterLLMProvider
+    from clauselens.domain.models import Vendor
+    from clauselens.domain.risk import RiskAnalysisStatus
+    from clauselens.services.risk_analysis import analyze_vendor_risks
+    from tests.conftest import source
+
+    llm = OpenRouterLLMProvider(make_settings(llm_provider="openrouter", openrouter_api_key=_require("OPENROUTER_API_KEY"),
+                                              openrouter_model=os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")))
+    page = source("S1", "Your subscription renews automatically each year at the then-current price. "
+                        "All fees are non-refundable. Any dispute will be resolved by binding arbitration.")
+    result = analyze_vendor_risks(llm, Vendor(id=uuid.uuid4(), name="Acme"), [page],
+                                  chunk_chars=12_000, max_chunks=1, max_clauses=10)
+    assert result.status is RiskAnalysisStatus.COMPLETED and result.clauses

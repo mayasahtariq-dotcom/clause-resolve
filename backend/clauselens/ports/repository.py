@@ -22,6 +22,7 @@ from clauselens.domain.models import (
     VendorRunStatus,
 )
 from clauselens.domain.policy import PolicyField
+from clauselens.domain.risk import VendorRiskAnalysis
 
 
 class VendorRun(BaseModel):
@@ -73,6 +74,7 @@ class SnapshotSummary(BaseModel):
     created_at: datetime
     findings: dict[PolicyField, Finding]
     warnings: list[str] = Field(default_factory=list)
+    risk: VendorRiskAnalysis | None = None
 
 
 @runtime_checkable
@@ -145,6 +147,7 @@ class Repository(Protocol):
         *,
         extraction_meta: dict[str, str],
         warnings: list[str],
+        risk: VendorRiskAnalysis | None = None,
     ) -> tuple[UUID, dict[PolicyField, Finding]]:
         """Persist a policy snapshot; return its id and findings with evidence ids assigned."""
         ...

@@ -115,6 +115,7 @@ class PolicySnapshotRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     extraction_meta: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     warnings: Mapped[list[Any]] = mapped_column(JSONType, default=list)
+    risk_analysis: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
 
     clauses: Mapped[list[PolicyClauseRow]] = relationship(cascade="all, delete-orphan", lazy="selectin")
 

@@ -6,7 +6,29 @@ these contracts. **They have not been exercised against the live APIs from this 
 available and the container's network policy blocks ollama.com and tinyfish.ai. Run
 `tests/test_live_providers.py` with real keys before going live.
 
-## Ollama Cloud (LLM)
+## OpenRouter (LLM, recommended)
+
+Verified on 2026-10-29 against openrouter.ai/docs (API overview, errors, structured outputs, limits) and the live
+`/api/v1/models` list. Not yet exercised with a real key from this environment; run
+`RUN_LIVE_TESTS=1 ... pytest tests/test_live_providers.py` style smoke tests with your key before relying on it.
+
+| Item | Verified value |
+| --- | --- |
+| Endpoint | `POST https://openrouter.ai/api/v1/chat/completions` |
+| Auth | `Authorization: Bearer $OPENROUTER_API_KEY`; optional `HTTP-Referer`, `X-OpenRouter-Title` |
+| Request | `{model, messages, temperature, max_tokens, response_format?}` (`json_object` or `json_schema`) |
+| Response | `{id, model, choices:[{message:{content}, finish_reason}], usage:{prompt_tokens, completion_tokens, cost?}}` |
+| Errors | `{error:{code, message, metadata?}}`: 400, 401, 402 credits, 403 moderation/guardrail, 408, 429, 502, 503 |
+| Rate limits | 429 / 503 may include `Retry-After` (honoured, capped at 30 s) |
+| 200-body errors | a provider failure after acceptance returns HTTP 200 with an `error` object and no choices; the adapter checks the body and retries transient codes |
+| Empty output | `finish_reason: "length"` with empty content means the output budget was used up; reported as malformed output |
+
+Adapter: `backend/clauselens/adapters/llm/openrouter.py` (`LLM_PROVIDER=openrouter`).
+Model: `google/gemini-2.5-flash` is suggested (listed with structured-output support, long context, low price);
+any id from https://openrouter.ai/models works via `OPENROUTER_MODEL`. Use `OPENROUTER_RESPONSE_FORMAT=json_schema`
+only with models that support structured outputs (the adapter then sets `provider.require_parameters`).
+
+## Ollama Cloud (LLM, alternative)
 
 | Item | Verified value |
 | --- | --- |

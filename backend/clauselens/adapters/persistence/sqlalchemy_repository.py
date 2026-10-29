@@ -49,6 +49,7 @@ from clauselens.domain.models import (
     VerificationStatus,
 )
 from clauselens.domain.policy import FieldStatus, PolicyField, PolicyValue
+from clauselens.domain.risk import VendorRiskAnalysis
 from clauselens.ports.repository import (
     EvidenceView,
     InvestigationRecord,
@@ -292,7 +293,8 @@ class SqlAlchemyRepository:
     # --------------------------------------------------------------- snapshots
     def save_snapshot(self, investigation_id: uuid.UUID, vendor_id: uuid.UUID,
                       findings: dict[PolicyField, Finding], *, extraction_meta: dict[str, str],
-                      warnings: list[str]) -> tuple[uuid.UUID, dict[PolicyField, Finding]]:
+                      warnings: list[str],
+                      risk: VendorRiskAnalysis | None = None) -> tuple[uuid.UUID, dict[PolicyField, Finding]]:
         with self._session() as s:
             prior = s.scalar(select(PolicySnapshotRow).where(PolicySnapshotRow.investigation_id == investigation_id,
                                                              PolicySnapshotRow.vendor_id == vendor_id))
@@ -303,7 +305,8 @@ class SqlAlchemyRepository:
                 RetrievedSourceRow.investigation_id == investigation_id,
                 RetrievedSourceRow.vendor_id == vendor_id)).all()}
             snap = PolicySnapshotRow(id=uuid.uuid4(), investigation_id=investigation_id, vendor_id=vendor_id,
-                                     extraction_meta=extraction_meta, warnings=warnings)
+                                     extraction_meta=extraction_meta, warnings=warnings,
+                                     risk_analysis=risk.model_dump(mode="json") if risk else None)
             s.add(snap)
             out: dict[PolicyField, Finding] = {}
             for field, finding in findings.items():
@@ -348,6 +351,10 @@ class SqlAlchemyRepository:
             )
         return out
 
+    @staticmethod
+    def _risk(snap: PolicySnapshotRow) -> VendorRiskAnalysis | None:
+        return VendorRiskAnalysis.model_validate(snap.risk_analysis) if snap.risk_analysis else None
+
     def load_policy(self, snapshot_id: uuid.UUID) -> VendorPolicy | None:
         with self._session() as s:
             snap = s.get(PolicySnapshotRow, snapshot_id)
@@ -356,7 +363,8 @@ class SqlAlchemyRepository:
             vendor = s.get(VendorRow, snap.vendor_id)
             assert vendor is not None
             return VendorPolicy(vendor=self._vendor(vendor), findings=self._findings(snap),
-                                warnings=list(snap.warnings or []), snapshot_id=snap.id)
+                                warnings=list(snap.warnings or []), snapshot_id=snap.id,
+                                risk=self._risk(snap))
 
     def latest_snapshot_ids(self, vendor_ids: list[uuid.UUID]) -> dict[uuid.UUID, uuid.UUID]:
         out: dict[uuid.UUID, uuid.UUID] = {}
@@ -377,7 +385,7 @@ class SqlAlchemyRepository:
                              .order_by(PolicySnapshotRow.created_at.desc()).limit(limit).offset(offset)).all()
             return [SnapshotSummary(id=r.id, vendor_id=r.vendor_id, investigation_id=r.investigation_id,
                                     created_at=_aware(r.created_at), findings=self._findings(r),  # type: ignore[arg-type]
-                                    warnings=list(r.warnings or [])) for r in rows], int(total)
+                                    warnings=list(r.warnings or []), risk=self._risk(r)) for r in rows], int(total)
 
     def get_vendor(self, vendor_id: uuid.UUID) -> Vendor | None:
         with self._session() as s:

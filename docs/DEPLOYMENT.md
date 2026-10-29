@@ -21,7 +21,7 @@ Investigations run in the worker, so they continue if the browser disconnects; p
 1. Push the repository to GitHub.
 2. Render Dashboard → **New → Blueprint** → select the repo. Render reads `render.yaml`.
 3. When prompted, enter the `sync: false` secrets for both services:
-   `TINYFISH_API_KEY`, `LLM_API_KEY` (Ollama API key) and `CORS_ORIGINS` (your Vercel URL, e.g.
+   `TINYFISH_API_KEY`, `OPENROUTER_API_KEY` and `CORS_ORIGINS` (your Vercel URL, e.g.
    `https://clauselens.vercel.app`; comma-separate several, never `*`).
 4. Migrations run via `preDeployCommand: alembic upgrade head` before each API deploy (Render requires a paid
    instance type for pre-deploy commands; on the free tier run `alembic upgrade head` once from the service Shell).
@@ -49,7 +49,12 @@ queue, a non-PostgreSQL database or wildcard CORS.
 | `WEB_RESEARCH_PROVIDER` | | `tinyfish` | `tinyfish` / `fixture` (demo) |
 | `TINYFISH_API_KEY` | with tinyfish | none | secret |
 | `RESEARCH_MAX_PAGES_PER_VENDOR` | | `6` | ≤ 10 |
-| `LLM_PROVIDER` | | `ollama` | `ollama` / `openai_compatible` / `fixture` (demo) |
+| `LLM_PROVIDER` | | `ollama` | `openrouter` (recommended) / `ollama` / `openai_compatible` / `fixture` (demo) |
+| `OPENROUTER_API_KEY` | with openrouter | none | secret |
+| `OPENROUTER_MODEL` | with openrouter | none | e.g. `google/gemini-2.5-flash` |
+| `OPENROUTER_RESPONSE_FORMAT` | | `json_object` | `json_object`, `json_schema`, `none` |
+| `RISK_ANALYSIS_ENABLED` | | `true` | risky-clause scan on TinyFish pages |
+| `RISK_CHUNK_CHARS` / `RISK_MAX_CHUNKS_PER_VENDOR` | | 12000 / 8 | long-document splitting and cost cap |
 | `LLM_BASE_URL` | | `https://ollama.com` | `/v1` URL for openai_compatible |
 | `LLM_API_KEY` | with Ollama Cloud | none | secret |
 | `LLM_MODEL` | | `gpt-oss:120b` | any id from `/api/tags` |

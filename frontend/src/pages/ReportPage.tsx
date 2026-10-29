@@ -8,6 +8,7 @@ import { EvidenceDialog } from "../components/EvidenceDialog";
 import { FALLBACK_LABELS } from "../components/fieldGroups";
 import { PrioritySelector, toPriorities } from "../components/PrioritySelector";
 import { ExplanationPanel, RecommendationPanel, RiskFlags } from "../components/RecommendationPanel";
+import { RiskClauses } from "../components/RiskClauses";
 import { Reveal } from "../components/motion";
 import { ErrorState, LoadingState } from "../components/ui";
 import { useMeta } from "../hooks/useMeta";
@@ -71,6 +72,9 @@ export function ReportPage() {
       </Reveal>
       <Reveal delay={140}>
         <ComparisonMatrix report={data} labels={labels} onEvidence={setTarget} />
+      </Reveal>
+      <Reveal>
+        <RiskClauses risks={data.risks} />
       </Reveal>
       <div className="grid gap-6 lg:grid-cols-2">
         <Reveal>

@@ -16,6 +16,10 @@ test("investigate three vendors and inspect evidence", async ({ page }) => {
   // CourseCove's refund pages disagree: shown as a conflict, never resolved silently.
   await expect(page.getByText("CourseCove: Refund window: Conflicting: 14 days vs 30 days.")).toBeVisible();
 
+  const risks = page.getByRole("heading", { name: /risky clauses/i }).locator("xpath=ancestor::section[1]");
+  await expect(risks.getByText("Free trial converts to paid automatically").first()).toBeVisible();
+  await expect(risks.getByText("Quote not found in page").first()).toBeVisible(); // hallucinated arbitration clause
+
   await page.getByRole("button", { name: /show evidence for studynest refund window/i }).first().click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText(/full refund within 30 days of purchase/)).toBeVisible();

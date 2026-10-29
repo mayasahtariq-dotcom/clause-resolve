@@ -29,6 +29,7 @@ from clauselens.domain.models import (
     VendorPolicy,
     VendorRunStatus,
 )
+from clauselens.domain.risk import RiskAnalysisStatus, VendorRiskAnalysis
 from clauselens.observability import log_context, log_event, metrics
 from clauselens.ports.jobs import JobQueue
 from clauselens.ports.llm import LLMProvider
@@ -37,6 +38,7 @@ from clauselens.ports.research import ResearchProvider, ResearchRequest
 from clauselens.ports.storage import ArtifactStorage
 from clauselens.services.explanation import generate_explanation
 from clauselens.services.extraction import ExtractionOutcome, extract_policy
+from clauselens.services.risk_analysis import analyze_vendor_risks
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,7 @@ class _VendorWork:
     extraction: ExtractionOutcome | None = None
     error: dict[str, str | None] | None = None
     policy: VendorPolicy | None = None
+    risk: VendorRiskAnalysis | None = None
 
 
 def _err(exc: Exception, stage: str) -> dict[str, str | None]:
@@ -158,6 +161,38 @@ class InvestigationService:
             for warning in w.extraction.warnings:
                 self._event(inv_id, "validating", warning, level="warning", vendor=name)
 
+    def _extract_and_scan(self, inv_id: uuid.UUID, w: _VendorWork) -> None:
+        self._extract(inv_id, w)
+        self._analyze_risks(inv_id, w)
+
+    def _analyze_risks(self, inv_id: uuid.UUID, w: _VendorWork) -> None:
+        """Flag risky clauses in the retrieved pages. Never fails the vendor: problems are reported."""
+        if not self.settings.risk_analysis_enabled or not w.sources:
+            return
+        name = w.vendor.name
+        with log_context(investigation_id=str(inv_id), vendor=name, stage="risk", provider=self.llm.name):
+            self._event(inv_id, "extracting", "Scanning the fine print for risky clauses", vendor=name)
+            started = time.perf_counter()
+            try:
+                w.risk = analyze_vendor_risks(
+                    self.llm, w.vendor, w.sources, chunk_chars=self.settings.risk_chunk_chars,
+                    max_chunks=self.settings.risk_max_chunks_per_vendor,
+                    max_clauses=self.settings.risk_max_clauses_per_vendor)
+            except Exception as exc:  # noqa: BLE001 - recorded on the vendor, not hidden
+                logger.exception("unexpected risk analysis failure")
+                w.risk = VendorRiskAnalysis(vendor_id=w.vendor.id, vendor_name=name, status=RiskAnalysisStatus.FAILED,
+                                            error=_err(exc, "risk")["message"], provider=self.llm.name,
+                                            model=self.llm.model)
+            metrics.observe_duration("risk_analysis", time.perf_counter() - started, provider=self.llm.name)
+            counts = w.risk.counts()
+            level = "error" if w.risk.status is RiskAnalysisStatus.FAILED else "info"
+            message = (f"Risk scan failed: {w.risk.error}" if w.risk.status is RiskAnalysisStatus.FAILED else
+                       f"Risk scan flagged {len(w.risk.clauses)} clause(s): {counts['high']} high, "
+                       f"{counts['medium']} medium, {counts['low']} low")
+            self._event(inv_id, "extracting", message, level=level, vendor=name, risk_status=w.risk.status.value)
+            for warning in w.risk.warnings:
+                self._event(inv_id, "extracting", warning, level="warning", vendor=name)
+
     def _validate(self, inv_id: uuid.UUID, w: _VendorWork) -> None:
         analysed = w.extraction is not None
         findings = aggregate_claims(
@@ -166,7 +201,7 @@ class InvestigationService:
         warnings = list(w.extraction.warnings) if w.extraction else []
         snapshot_id, findings = self.repo.save_snapshot(
             inv_id, w.vendor.id, findings, extraction_meta=w.extraction.meta if w.extraction else {},
-            warnings=warnings)
+            warnings=warnings, risk=w.risk)
         counts: dict[str, int] = {}
         for f in findings.values():
             counts[f.status.value] = counts.get(f.status.value, 0) + 1
@@ -175,7 +210,7 @@ class InvestigationService:
             metrics.inc("evidence_unverified_total", unverified)
         w.policy = VendorPolicy(vendor=w.vendor, findings=findings, sources=w.sources, warnings=warnings,
                                 snapshot_id=snapshot_id, failed=w.error is not None,
-                                error=(w.error or {}).get("message"))
+                                error=(w.error or {}).get("message"), risk=w.risk)
         if w.error is None:
             self.repo.set_vendor_run(inv_id, w.vendor.id, VendorRunStatus.COMPLETED)
             self._event(inv_id, "validating",
@@ -225,7 +260,7 @@ class InvestigationService:
                         worker_id)
             with ThreadPoolExecutor(max_workers=min(self.settings.llm_max_concurrency, len(ready)),
                                     thread_name_prefix="extract") as pool:
-                list(pool.map(lambda w: self._extract(inv_id, w), ready))
+                list(pool.map(lambda w: self._extract_and_scan(inv_id, w), ready))
 
         self._phase(inv_id, InvestigationStatus.VALIDATING, "Verifying quotes against retrieved pages", worker_id)
         for w in work:
@@ -257,7 +292,12 @@ class InvestigationService:
     def build_report(self, policies: list[VendorPolicy], priorities: list[Priority], *,
                      investigation_id: uuid.UUID | None, explain: bool) -> ComparisonReport:
         report = compare(policies, priorities or None, scoring_policy=self.settings.scoring_policy())
-        report = report.model_copy(update={"investigation_id": investigation_id, "is_demo": self.is_demo})
+        risks = [p.risk or VendorRiskAnalysis(vendor_id=p.vendor.id, vendor_name=p.vendor.name,
+                                              status=RiskAnalysisStatus.SKIPPED,
+                                              warnings=["No retrieved text was available for a risk scan."])
+                 for p in policies]
+        report = report.model_copy(update={"investigation_id": investigation_id, "is_demo": self.is_demo,
+                                           "risks": risks})
         if explain and self.settings.llm_generate_explanation and any(not p.failed for p in policies):
             text, status = generate_explanation(self.llm, report)
             report = report.model_copy(update={"explanation": text, "explanation_status": status})

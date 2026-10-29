@@ -63,6 +63,75 @@ def _claims(*items: dict) -> str:
     return json.dumps({"claims": list(items)})
 
 
+def _risks(*items: dict) -> str:
+    return json.dumps({"clauses": list(items)})
+
+
+# Canned risk-scan responses, keyed by page URL (the scan runs once per page section).
+RISK_RESPONSES: dict[str, str] = {
+    "https://studynest.example/help/refund-policy": _risks(
+        {"clause": "Bundles and gift cards are non-refundable", "risk_level": "medium", "category": "Refunds",
+         "explanation": "If you buy a course bundle or a gift card you cannot get your money back.",
+         "reason": "Money spent on these items is lost even if you change your mind the same day.",
+         "quote": "Course bundles and gift cards are non-refundable."},
+        {"clause": "24-hour cancellation deadline", "risk_level": "low", "category": "Cancellation",
+         "explanation": "You must cancel at least a day before renewal or you pay for the next period.",
+         "reason": "Cancelling on the renewal day itself is too late.",
+         "quote": "Cancel at least 24 hours before your renewal date to avoid being charged for the next period."},
+    ),
+    "https://studynest.example/plus/trial": _risks(
+        {"clause": "Free trial converts to paid automatically", "risk_level": "high", "category": "Renewal",
+         "explanation": "When the 7-day trial ends you are moved to a paid monthly plan unless you cancel first.",
+         "reason": "Forgetting to cancel leads to a charge without any further confirmation.",
+         "quote": "Your trial automatically converts to a paid monthly plan unless you cancel before it ends."},
+        {"clause": "Automatic monthly renewal", "risk_level": "medium", "category": "Renewal",
+         "explanation": "The subscription keeps charging you every month until you cancel.",
+         "reason": "Ongoing charges continue even if you stop using the service.",
+         "quote": "StudyNest Plus subscriptions renew automatically each month."},
+    ),
+    "https://coursecove.example/refunds": _risks(
+        {"clause": "Refund only if under 20% watched", "risk_level": "medium", "category": "Refunds",
+         "explanation": "You lose the right to a refund once you have viewed a fifth of the course.",
+         "reason": "Sampling a course properly can easily use up the refund right.",
+         "quote": "if less than 20% of the course has been viewed"},
+        {"clause": "Issued certificates are non-refundable", "risk_level": "low", "category": "Refunds",
+         "explanation": "Once a certificate is issued you cannot get a refund for it.",
+         "reason": "Certificate fees are lost after issue.",
+         "quote": "Certificates are non-refundable once issued."},
+    ),
+    "https://coursecove.example/faq": _risks(
+        {"clause": "Cancellation by email only", "risk_level": "medium", "category": "Cancellation",
+         "explanation": "There is no cancel button; you have to email support.",
+         "reason": "Email-only cancellation is slower and you may keep being charged while you wait.",
+         "quote": "To cancel your membership, email support@coursecove.example with your account email."},
+        {"clause": "Binding arbitration", "risk_level": "high", "category": "Disputes",
+         "explanation": "Disputes must go to private arbitration instead of court.",
+         "reason": "Hallucinated by the demo model: this text is not on the page and must show as unverified.",
+         "quote": "All disputes will be resolved by binding individual arbitration."},
+    ),
+    "https://skillforge.example/terms": _risks(
+        {"clause": "$25 early cancellation fee", "risk_level": "high", "category": "Fees",
+         "explanation": "Cancelling an annual plan before the term ends costs $25.",
+         "reason": "You pay a penalty to leave a plan early.",
+         "quote": "A cancellation fee of $25 applies to annual plans cancelled before the end of the term."},
+        {"clause": "15% restocking fee", "risk_level": "medium", "category": "Fees",
+         "explanation": "Returned course kits are refunded minus 15%.",
+         "reason": "You never get the full price back on returned kits.",
+         "quote": "subject to a 15% restocking fee"},
+        {"clause": "Customer pays return shipping", "risk_level": "medium", "category": "Returns",
+         "explanation": "You pay to send returned kits back.",
+         "reason": "Return costs reduce what you actually get back.",
+         "quote": "the customer is responsible for return shipping costs"},
+        {"clause": "Phone-only cancellation", "risk_level": "medium", "category": "Cancellation",
+         "explanation": "Annual plans can only be cancelled by calling support.",
+         "reason": "Phone-only cancellation adds friction and delay.",
+         "quote": "Annual plans may be cancelled by calling our support line."},
+    ),
+    "https://skillforge.example/legal/ai": _risks(),
+    "https://garbledai.example/refunds": "I think the risky parts are probably the refund window? Not sure.",
+}
+
+
 FIXTURES: dict[str, dict] = {
     "studynest": {
         "name": "StudyNest",

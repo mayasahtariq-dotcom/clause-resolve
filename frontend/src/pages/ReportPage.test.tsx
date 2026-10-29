@@ -41,6 +41,33 @@ describe("ReportPage", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("shows risky clauses with levels, filters and evidence", async () => {
+    mockFetch({ "/api/meta": meta, "/api/reports/rep-1/evidence": { report_id: "rep-1", items: evidence }, "/api/reports/rep-1": report });
+    renderAt(<ReportPage />, at);
+    const user = userEvent.setup();
+    const section = (await screen.findByRole("heading", { name: /risky clauses/i })).closest("section") as HTMLElement;
+    expect(within(section).getByText("Automatic annual renewal")).toBeInTheDocument();
+    expect(within(section).getByText("High risk")).toBeInTheDocument();
+    expect(within(section).getByText(/risk scan failed/i)).toBeInTheDocument();
+    expect(within(section).getByText("Quote not found in page")).toBeInTheDocument();
+
+    await user.click(within(section).getByRole("button", { name: /show why and evidence for alpha: automatic annual renewal/i }));
+    expect(within(section).getByText("You can be charged without a reminder.")).toBeInTheDocument();
+    expect(within(section).getByText(/Plans renew automatically each year/)).toBeInTheDocument();
+    expect(within(section).getByRole("link", { name: /terms/i })).toHaveAttribute("href", "https://alpha.example/terms");
+
+    await user.click(within(section).getByRole("button", { name: "medium" }));
+    expect(within(section).queryByText("Automatic annual renewal")).not.toBeInTheDocument();
+    expect(within(section).getByText("Short refund window")).toBeInTheDocument();
+  });
+
+  it("hides the risk section for reports without risk data", async () => {
+    mockFetch({ "/api/meta": meta, "/api/reports/rep-1": { ...report, risks: undefined } });
+    renderAt(<ReportPage />, at);
+    await screen.findByRole("heading", { name: /alpha best matches/i });
+    expect(screen.queryByRole("heading", { name: /risky clauses/i })).not.toBeInTheDocument();
+  });
+
   it("shows an error state for a missing report", async () => {
     mockFetch({ "/api/meta": meta });
     renderAt(<ReportPage />, at);

@@ -54,6 +54,31 @@ export const report: ComparisonReport = {
   explanation_status: "rejected",
   scoring_policy: {},
   snapshot_ids: [],
+  risks: [
+    {
+      vendor_id: A, vendor_name: "Alpha", status: "completed", chunks_analyzed: 2, chunks_total: 2, warnings: [],
+      provider: "openrouter", model: "google/gemini-2.5-flash", error: null,
+      clauses: [
+        {
+          clause: "Automatic annual renewal", risk_level: "high", category: "Renewal",
+          explanation: "Your plan renews every year unless you cancel.", reason: "You can be charged without a reminder.",
+          evidence: { quote: "Plans renew automatically each year.", source_key: "S1", source_url: "https://alpha.example/terms",
+            source_title: "Terms", retrieved_at: "2026-10-28T09:00:00Z", verification: "verified", match_method: "exact" },
+        },
+        {
+          clause: "Short refund window", risk_level: "medium", category: "Refunds",
+          explanation: "Refunds only within 7 days.", reason: "Easy to miss.",
+          evidence: { quote: "Refunds within 7 days.", source_key: "S1", source_url: "https://alpha.example/terms",
+            source_title: "Terms", retrieved_at: null, verification: "not_in_source", match_method: null },
+        },
+      ],
+    },
+    {
+      vendor_id: B, vendor_name: "Beta", status: "failed", chunks_analyzed: 0, chunks_total: 1,
+      warnings: ["Section S1#1 could not be analysed: rate limited"], provider: "openrouter", model: "m",
+      error: "The AI provider could not analyse this vendor's pages.", clauses: [],
+    },
+  ],
   is_demo: false,
   disclaimer: "Not legal advice.",
 };

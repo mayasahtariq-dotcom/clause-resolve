@@ -114,6 +114,7 @@ class VendorPolicy(BaseModel):
     snapshot_id: UUID | None = None
     failed: bool = False
     error: str | None = None
+    risk: VendorRiskAnalysis | None = None
 
 
 class Criterion(StrEnum):
@@ -174,6 +175,7 @@ class ComparisonReport(BaseModel):
     explanation_status: str = "not_requested"  # generated | rejected | failed | not_requested
     scoring_policy: dict[str, float] = Field(default_factory=dict)
     snapshot_ids: list[UUID] = Field(default_factory=list)  # policy snapshots this report compared
+    risks: list[VendorRiskAnalysis] = Field(default_factory=list)  # risky clauses per vendor
     is_demo: bool = False
     disclaimer: str = (
         "ClauseLens summarises publicly available policy text. It is not legal advice; "
@@ -189,3 +191,10 @@ class InvestigationEvent(BaseModel):
     message: str
     vendor_name: str | None = None
     data: dict[str, object] = Field(default_factory=dict)
+
+
+# Imported last: risk.py depends on VerificationStatus defined above.
+from clauselens.domain.risk import VendorRiskAnalysis  # noqa: E402
+
+VendorPolicy.model_rebuild()
+ComparisonReport.model_rebuild()

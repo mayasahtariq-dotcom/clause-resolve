@@ -229,3 +229,41 @@ def test_rate_limit(tmp_path) -> None:  # type: ignore[no-untyped-def]
     c = TestClient(create_app(settings, build_container(settings)))
     codes = [c.post("/api/investigations", json={"vendors": THREE[:2]}).status_code for _ in range(3)]
     assert codes == [202, 202, 429]
+
+
+def test_risky_clauses_in_report(client: TestClient) -> None:
+    inv = run(client, [*THREE, {"name": "GarbledAI"}])
+    report = client.get(f"/api/reports/{inv['report_id']}").json()
+    risks = {r["vendor_name"]: r for r in report["risks"]}
+    assert set(risks) == {"StudyNest", "CourseCove", "SkillForge", "GarbledAI"}
+    study = risks["StudyNest"]
+    assert study["status"] == "completed" and study["chunks_analyzed"] == study["chunks_total"] == 2
+    top = study["clauses"][0]
+    assert top["risk_level"] == "high" and top["clause"] == "Free trial converts to paid automatically"
+    assert set(top) >= {"clause", "risk_level", "explanation", "reason", "evidence"}
+    assert top["evidence"]["verification"] == "verified"
+    assert top["evidence"]["source_url"] == "https://studynest.example/plus/trial" and top["evidence"]["retrieved_at"]
+    cove = {c["clause"]: c for c in risks["CourseCove"]["clauses"]}
+    assert cove["Binding arbitration"]["evidence"]["verification"] == "not_in_source"  # hallucination caught
+    assert risks["GarbledAI"]["status"] == "failed"  # malformed model output, reported not hidden
+    assert all("365" not in c["explanation"] for c in risks["SkillForge"]["clauses"])  # injection ignored
+    events = client.get(f"/api/investigations/{inv['id']}/events", params={"stream": "false"}).json()
+    assert any(e["message"].startswith("Risk scan flagged") for e in events)
+    assert any(e["message"].startswith("Risk scan failed") for e in events)
+
+
+def test_risks_survive_recompare(client: TestClient) -> None:
+    inv = run(client, THREE)
+    report = client.post("/api/comparisons", json={"vendor_ids": [v["id"] for v in inv["vendors"]],
+                                                   "priorities": [{"criterion": "lowest_cancellation_fee"}]}).json()
+    assert {r["vendor_name"] for r in report["risks"]} == {"StudyNest", "CourseCove", "SkillForge"}
+    assert all(r["status"] == "completed" for r in report["risks"])
+
+
+def test_risk_analysis_can_be_disabled(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    settings = make_settings(database_url=f"sqlite:///{tmp_path / 'off.db'}", risk_analysis_enabled=False)
+    Base.metadata.create_all(create_db_engine(settings))
+    c = TestClient(create_app(settings, build_container(settings)))
+    inv = run(c, THREE[:2])
+    report = c.get(f"/api/reports/{inv['report_id']}").json()
+    assert all(r["status"] == "skipped" for r in report["risks"])

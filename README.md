@@ -12,7 +12,7 @@ React (Vercel) ──HTTPS──► FastAPI (Render web) ──► PostgreSQL
                                  ▼                         │
                            Redis (Key Value) ──► Celery worker (Render)
                                                    │            │
-                                          TinyFish Search+Fetch │ Ollama Cloud /api/chat
+                     TinyFish Search + Fetch (browse) │ OpenRouter chat/completions (analyse)
 ```
 
 | Layer | Path | Notes |
@@ -28,6 +28,39 @@ React (Vercel) ──HTTPS──► FastAPI (Render web) ──► PostgreSQL
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (boundaries and how to replace each provider),
 [docs/PROVIDERS.md](docs/PROVIDERS.md) (verified TinyFish / Ollama contracts and model choice) and
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (Render + Vercel).
+
+## How TinyFish and OpenRouter work together
+
+They have separate jobs:
+
+1. **TinyFish** browses: it finds each vendor's official policy pages and returns their text.
+2. **OpenRouter** analyses that text with the model in `OPENROUTER_MODEL`. It is used for:
+   - policy-term extraction (refund window, fees, ...) that feeds the comparison table, and
+   - the **risky-clause scan**, which returns per vendor a list of
+     `{clause, risk_level, explanation, reason, category, evidence: {quote, source_url, retrieved_at, verification}}`.
+3. The backend validates every model answer: JSON is schema-checked (with one repair attempt), and every quote is
+   matched against the TinyFish page text. Quotes that are not on the page are shown as "unconfirmed".
+
+Long pages are split into sections (`RISK_CHUNK_CHARS`) with a per-vendor cap (`RISK_MAX_CHUNKS_PER_VENDOR`); the
+report says when a document was truncated. Rate limits (HTTP 429 with `Retry-After`), provider outages, errors that
+OpenRouter returns inside an HTTP 200 body, empty or truncated outputs and malformed JSON are retried where it makes
+sense and otherwise reported per vendor without failing the whole report.
+
+### OpenRouter setup
+
+1. Create a key at https://openrouter.ai/keys and add credits if your model is not free.
+2. In `backend/.env` (copied from `backend/.env.example`):
+
+   ```
+   LLM_PROVIDER=openrouter
+   OPENROUTER_API_KEY=sk-or-...
+   OPENROUTER_MODEL=google/gemini-2.5-flash
+   ```
+
+3. Restart the backend. `/api/meta` should show `"llm_provider": "openrouter"`.
+
+The key is read only by the backend (`SecretStr`, redacted from logs, never returned by the API or sent to the
+browser). `.env` is git-ignored; only `.env.example` with placeholders is committed.
 
 ## Quick start (local)
 

@@ -123,6 +123,39 @@ export interface Recommendation {
   totals: Record<string, number>;
 }
 
+export type RiskLevel = "high" | "medium" | "low";
+export type RiskAnalysisStatus = "completed" | "partial" | "failed" | "skipped";
+
+export interface RiskClause {
+  clause: string;
+  risk_level: RiskLevel;
+  explanation: string;
+  reason: string;
+  category: string | null;
+  evidence: {
+    quote: string;
+    source_key: string;
+    source_url: string | null;
+    source_title: string | null;
+    retrieved_at: string | null;
+    verification: Verification;
+    match_method: string | null;
+  };
+}
+
+export interface VendorRiskAnalysis {
+  vendor_id: string;
+  vendor_name: string;
+  status: RiskAnalysisStatus;
+  clauses: RiskClause[];
+  chunks_analyzed: number;
+  chunks_total: number;
+  warnings: string[];
+  provider: string | null;
+  model: string | null;
+  error: string | null;
+}
+
 export interface ComparisonReport {
   id: string;
   investigation_id: string | null;
@@ -138,6 +171,7 @@ export interface ComparisonReport {
   explanation_status: "generated" | "rejected" | "failed" | "not_requested";
   scoring_policy: Record<string, number>;
   snapshot_ids: string[];
+  risks?: VendorRiskAnalysis[];
   is_demo: boolean;
   disclaimer: string;
 }

@@ -144,7 +144,8 @@ class _RawClaim(BaseModel):
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 
-def _extract_json_object(text: str) -> Any:
+def extract_json_object(text: str) -> Any:
+    """Parse the first JSON object in model output (tolerates code fences and prose)."""
     cleaned = _FENCE.sub("", text.strip())
     try:
         return json.loads(cleaned)
@@ -199,7 +200,7 @@ def _parse_value(field: PolicyField, raw: dict[str, Any] | None) -> PolicyValue:
 
 def parse_claims(text: str, valid_source_keys: set[str]) -> tuple[list[Claim], list[str]]:
     """Parse and validate model output. Raises LLMError if the overall shape is unusable."""
-    data = _extract_json_object(text)
+    data = extract_json_object(text)
     if not isinstance(data, dict) or not isinstance(data.get("claims"), list):
         raise LLMError('Model output must be an object with a "claims" array',
                        category=ErrorCategory.MALFORMED_OUTPUT)
